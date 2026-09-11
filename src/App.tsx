@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Power, PowerOff, RefreshCw } from "lucide-react";
+import { AlertTriangle, LogOut, Power, PowerOff, RefreshCw } from "lucide-react";
 import { ativarTriangulacao, desativarTriangulacao, getStatus } from "./api";
 import type { TriangulacaoStatus } from "./types";
 import Countdown from "./components/Countdown";
 import StatusBadge from "./components/StatusBadge";
 import TriangulacaoTable from "./components/TriangulacaoTable";
+import LoginScreen from "./components/LoginScreen";
+import { useAuth } from "./context/AuthContext";
 
 const INITIAL: TriangulacaoStatus = { ativa: false, tempo_restante_segundos: 0, dados: [] };
 
-export default function App() {
+function ManagementScreen() {
+  const { session, logout } = useAuth();
   const [status, setStatus] = useState<TriangulacaoStatus>(INITIAL);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -37,7 +40,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [buscar]);
 
-  // Countdown local de 1 em 1 segundo, sincronizado com o backend a cada polling
   useEffect(() => {
     if (!status.ativa) {
       setDisplaySegundos(0);
@@ -52,11 +54,14 @@ export default function App() {
   }, [status.ativa, status.tempo_restante_segundos]);
 
   const ativar = async () => {
-    console.log("[App] ativar clicked");
     setLoading(true);
     setErro(null);
     try {
-      await ativarTriangulacao();
+      await ativarTriangulacao({
+        nome_usuario: session?.NomeUsuario ?? "",
+        codigo_usuario: session?.Codigo ?? "",
+        login_usuario: session?.LoginUsuario ?? "",
+      });
       await buscar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao ativar.");
@@ -66,11 +71,14 @@ export default function App() {
   };
 
   const desativar = async () => {
-    console.log("[App] desativar clicked");
     setLoading(true);
     setErro(null);
     try {
-      await desativarTriangulacao();
+      await desativarTriangulacao({
+        nome_usuario: session?.NomeUsuario ?? "",
+        codigo_usuario: session?.Codigo ?? "",
+        login_usuario: session?.LoginUsuario ?? "",
+      });
       await buscar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao desativar.");
@@ -81,7 +89,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200">
-      {/* Header */}
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
@@ -90,15 +97,23 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-base font-bold text-slate-900">Gerenciador de Triangulação</h1>
-              <p className="text-xs text-slate-500">tegercontrpedperm</p>
+              <p className="text-xs text-slate-500">{session?.NomeUsuario}</p>
             </div>
           </div>
-          <StatusBadge ativa={status.ativa} />
+          <div className="flex items-center gap-4">
+            <StatusBadge ativa={status.ativa} />
+            <button
+              onClick={logout}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-rose-600"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sair
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-8">
-        {/* Error banner */}
         {erro && (
           <div className="mb-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {erro}
@@ -106,7 +121,6 @@ export default function App() {
         )}
 
         <div className="grid gap-6 md:grid-cols-2">
-          {/* Painel de controle */}
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-500">
               Controle de Triangulação
@@ -143,7 +157,6 @@ export default function App() {
             </div>
           </section>
 
-          {/* Resumo / regras */}
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
               Regras de Negócio
@@ -182,7 +195,6 @@ export default function App() {
           </section>
         </div>
 
-        {/* Tabela */}
         <section className="mt-6">
           <TriangulacaoTable dados={status.dados} ativa={status.ativa} />
         </section>
@@ -193,4 +205,22 @@ export default function App() {
       </footer>
     </div>
   );
+}
+
+export default function App() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-blue-50">
+        <div className="text-slate-400 text-sm">Carregando...</div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginScreen />;
+  }
+
+  return <ManagementScreen />;
 }

@@ -12,3 +12,9 @@ export interface TriangulacaoStatus {
 export interface ApiMensagem {
   mensagem: string;
 }
+
+export interface UserData {
+  nome_usuario: string;
+  codigo_usuario: string;
+  login_usuario: string;
+}
