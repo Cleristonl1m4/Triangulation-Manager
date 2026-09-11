@@ -1,5 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from pathlib import Path
 
 import database
 from config import settings
@@ -10,6 +14,12 @@ from scheduler import (
 )
 from datetime import datetime
 
+
+class UsuarioLog(BaseModel):
+    nome_usuario: str = ""
+    codigo_usuario: str = ""
+    login_usuario: str = ""
+
 app = FastAPI(title="Gerenciador de Triangulação de Permissões")
 
 app.add_middleware(
@@ -18,6 +28,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+DIST_DIR = Path(__file__).resolve().parent.parent / "dist"
 
 TRIANGULO_PAIRS = [(36, 15), (36, 16), (50, 36)]
 
@@ -35,13 +47,20 @@ def _expire():
 
 
 @app.post("/triangulacao")
-def ativar():
+def ativar(usuario: UsuarioLog = None):
+    print("[backend] POST /triangulacao - usuario:", usuario)
+    print("[backend] POST /triangulacao - usuario dict:", usuario.model_dump() if usuario else None)
     if _is_ativa():
+        print("[backend] Triangulacao ja ativa, ignorando.")
         return {"mensagem": "Triangulação já está ativa."}
     database.insert_triangulacao()
-    # Persist activation time so all backend processes can report remaining time
     database.set_activation_time(datetime.utcnow())
     schedule_auto_disable(settings.triangulacao_segundos, _expire)
+    try:
+        database.insert_log(usuario.nome_usuario, usuario.codigo_usuario, usuario.login_usuario, "ATIVACAO")
+        print("[backend] Log inserido com sucesso no REPTEC")
+    except Exception as e:
+        print("[backend] ERRO ao inserir log:", type(e).__name__, e)
     return {"mensagem": "Triangulação ativada com sucesso por 10 minutos."}
 
 
@@ -75,8 +94,26 @@ def consultar():
 
 
 @app.delete("/triangulacao")
-def desativar():
+def desativar(usuario: UsuarioLog = None):
+    print("[backend] DELETE /triangulacao - usuario:", usuario)
+    print("[backend] DELETE /triangulacao - usuario dict:", usuario.model_dump() if usuario else None)
     database.delete_triangulacao()
     database.clear_activation_time()
     unschedule_auto_disable()
+    try:
+        database.insert_log(usuario.nome_usuario, usuario.codigo_usuario, usuario.login_usuario, "DESATIVACAO")
+        print("[backend] Log de desativacao inserido com sucesso no REPTEC")
+    except Exception as e:
+        print("[backend] ERRO ao inserir log de desativacao:", type(e).__name__, e)
     return {"mensagem": "Triangulação desativada com sucesso."}
+
+
+if DIST_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        file_path = DIST_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(DIST_DIR / "index.html")
