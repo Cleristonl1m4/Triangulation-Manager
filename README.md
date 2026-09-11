@@ -1,43 +1,33 @@
-# Gerenciador de Triangulação
+# Triangulation Manager
 
-Aplicação full-stack para ativação **temporária** (10 minutos) de regras de triangulação
-de permissões em um banco **Microsoft SQL Server**, controlada por um backend Python
-com temporizador automático.
+Full-stack application for **temporary** (10-minute) activation of permission triangulation rules in a **Microsoft SQL Server** database, controlled by a Python backend with automatic timer.
 
----
+## Architecture
 
-## Arquitetura
+| Layer    | Technology                               |
+| -------- | ---------------------------------------- |
+| Frontend | React + Vite + TypeScript + Tailwind CSS |
+| Backend  | Python + FastAPI + APScheduler + pyodbc  |
+| Database | Microsoft SQL Server                     |
 
-| Camada    | Tecnologia                                   |
-| --------- | --------------------------------------------- |
-| Frontend  | React + Vite + TypeScript + Tailwind CSS      |
-| Backend   | Python + FastAPI + APScheduler + pyodbc       |
-| Banco     | Microsoft SQL Server                          |
+Triangulation is activated by inserting 3 specific pairs into the `tegercontrpedperm` table. The backend schedules a background task (APScheduler) that removes the records after exactly **600 seconds (10 minutes)**, regardless of whether the frontend is open.
 
-A triangulação é ativada inserindo 3 pares específicos na tabela `tegercontrpedperm`.
-O backend agenda uma tarefa em segundo plano (APScheduler) que remove os registros
-após exatos **600 segundos (10 minutos)**, independente do frontend estar aberto.
-
-### Pares da triangulação
+### Triangulation Pairs
 
 | controle_selecionado | controle_permitido_alterar |
-| --------------------- | -------------------------- |
-| 36                    | 15                         |
-| 36                    | 16                         |
-| 50                    | 36                         |
+| -------------------- | -------------------------- |
+| 36                   | 15                         |
+| 36                   | 16                         |
+| 50                   | 36                         |
 
----
+## Prerequisites
 
-## Pré-requisitos
-
-- **Node.js** 18+ e npm
+- **Node.js** 18+ and npm
 - **Python** 3.10+
-- **Microsoft SQL Server** acessível
-- **Driver ODBC 17 (ou 18) for SQL Server** instalado no host do backend
+- **Microsoft SQL Server** accessible
+- **ODBC Driver 17 (or 18) for SQL Server** installed on the backend host
 
-### 1. Instalar o Driver ODBC do SQL Server
-
-O `pyodbc` precisa do driver ODBC nativo da Microsoft.
+### 1. Install the SQL Server ODBC Driver
 
 **Ubuntu / Debian:**
 
@@ -56,90 +46,93 @@ brew update
 brew install msodbcsql17 mssql-tools
 ```
 
-**Windows:** baixe e instale o
-[Microsoft ODBC Driver 17 for SQL Server](https://learn.microsoft.com/sql/connect/odbc/download-odbc-driver-for-sql-server).
+**Windows:** Download and install the [Microsoft ODBC Driver 17 for SQL Server](https://learn.microsoft.com/sql/connect/odbc/download-odbc-driver-for-sql-server).
 
-> Se você usar o Driver 18, ajuste a variável `DB_DRIVER` no `.env` do backend.
+> If using Driver 18, adjust the `DB_DRIVER` variable in the `.env` file.
 
----
+## Environment Configuration
 
-## Configuração de Variáveis de Ambiente
-
-### Backend (`backend/.env`)
-
-Copie o arquivo de exemplo e ajuste se necessário:
+Copy the example file and adjust as needed:
 
 ```bash
-cd backend
 cp .env.example .env
 ```
 
-Conteúdo:
+### Required Variables
 
 ```env
-DB_HOST=
-DB_PORT=
-DB_NAME=
-DB_USER=
-DB_PASSWORD=
+# Database
+DB_HOST=your-db-host
+DB_PORT=1433
+DB_NAME=your-db-name
+DB_USER=your-db-user
+DB_PASSWORD=your-db-password
 DB_DRIVER={ODBC Driver 17 for SQL Server}
 DB_ENCRYPT=no
 DB_TRUST_SERVER_CERTIFICATE=yes
+
+# Backend timing (seconds) - 10 minutes by business rule
 TRIANGULACAO_SEGUNDOS=600
+
+# REPTEC database for audit log
+REPTEC_DB_NAME=your-reptec-db-name
+
+# Server
+PORT=5017
+HOST=0.0.0.0
+
+# External login API (optional)
+VITE_LOGIN_API_URL=https://your-login-api.com/api/genericos/ge
 ```
 
-> O valor `TRIANGULACAO_SEGUNDOS=600` define os 10 minutos exigidos pela regra de negócio.
+## How to Run
 
-### Frontend (`.env` na raiz do projeto)
+### Production (Single Port)
 
-```env
-VITE_API_URL=http://localhost:8000
+Build the frontend and start the unified server:
+
+```bash
+npm start
 ```
 
-Ajuste a URL caso o backend rode em outra porta/host.
+This will:
+1. Build the React frontend into `dist/`
+2. Start the FastAPI server on port 5017 (configurable via `PORT`)
+3. Serve both the API and the frontend from the same port
 
----
+### Development
 
-## Como iniciar
-
-### Backend (API Python)
+**Backend:**
 
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 5017
 ```
 
-A API ficará disponível em `http://localhost:8000` e a documentação interativa em
-`http://localhost:8000/docs`.
-
-### Frontend (React + Vite)
+**Frontend:**
 
 ```bash
-# na raiz do projeto
 npm install
 npm run dev
 ```
 
-A interface abre em `http://localhost:5173`.
+The frontend dev server runs on `http://localhost:5019` with hot reload.
 
----
+## Database Table
 
-## Tabela do Banco de Dados
+**Table:** `tegercontrpedperm`
 
-**Tabela:** `tegercontrpedperm`
+| Column                       | Type | Description                            |
+| ---------------------------- | ---- | -------------------------------------- |
+| `controle_selecionado`       | INT  | Source control code                    |
+| `controle_permitido_alterar` | INT  | Control code that can be modified      |
 
-| Coluna                    | Tipo | Descrição                          |
-| ------------------------- | ---- | ---------------------------------- |
-| `controle_selecionado`    | INT  | Código do controle de origem       |
-| `controle_permitido_alterar` | INT | Código do controle que pode ser alterado |
+> The application assumes this table **already exists**. It only inserts, queries, and removes the 3 specific triangulation records.
 
-> A aplicação assume que esta tabela **já existe** no banco. Ela apenas insere,
-> consulta e remove os 3 registros específicos da triangulação.
-
-DDL de referência (se precisar criar):
+Reference DDL (if needed):
 
 ```sql
 CREATE TABLE tegercontrpedperm (
@@ -148,38 +141,35 @@ CREATE TABLE tegercontrpedperm (
 );
 ```
 
----
+## REST API Specification
 
-## Especificação da API REST
+The API exposes 3 endpoints under the `/triangulacao` prefix.
 
-A API expõe 3 endpoints, todos sob o prefixo `/triangulacao`.
+### POST `/triangulacao` - Activate Triangulation
 
-### POST `/triangulacao` — Ativar Triangulação
+Inserts the 3 specific records (`36->15`, `36->16`, `50->36`) into `tegercontrpedperm` and starts the 10-minute backend timer (via APScheduler).
 
-Insere os 3 registros específicos (`36→15`, `36→16`, `50→36`) na tabela
-`tegercontrpedperm` e dispara o temporizador interno de 10 minutos no backend
-(via APScheduler).
-
-**Resposta 200:**
+**Request body:**
 
 ```json
-{ "mensagem": "Triangulação ativada com sucesso por 10 minutos." }
+{
+  "nome_usuario": "User Name",
+  "codigo_usuario": "123",
+  "login_usuario": "user.login"
+}
 ```
 
-Se já estiver ativa:
+**Response 200:**
 
 ```json
-{ "mensagem": "Triangulação já está ativa." }
+{ "mensagem": "Triangulacao ativada com sucesso por 10 minutos." }
 ```
 
----
+### GET `/triangulacao` - Query Status
 
-### GET `/triangulacao` — Consultar Status
+Checks the database for the 3 records and returns the current state, records, and remaining time in seconds.
 
-Verifica no banco se os 3 registros estão presentes e retorna o estado atual, os
-registros e o tempo restante em segundos.
-
-**200 — Quando ativa:**
+**Response 200 (active):**
 
 ```json
 {
@@ -193,63 +183,60 @@ registros e o tempo restante em segundos.
 }
 ```
 
-**200 — Quando inativa:**
+### DELETE `/triangulacao` - Deactivate Triangulation
+
+Immediately removes the 3 specific records and cancels the backend schedule.
+
+**Response 200:**
 
 ```json
-{
-  "ativa": false,
-  "tempo_restante_segundos": 0,
-  "dados": []
-}
+{ "mensagem": "Triangulacao desativada com sucesso." }
 ```
 
----
+## Timer Behavior (10 minutes)
 
-### DELETE `/triangulacao` — Desativar Triangulação
+1. On `POST /triangulacao`, the backend schedules a one-shot task in **APScheduler** (`DateTrigger`) to run after 600 seconds.
+2. The activation timestamp is persisted in the database for cross-process consistency.
+3. When time expires, the backend **automatically removes the 3 records** - even if the frontend is closed.
+4. `DELETE /triangulacao` cancels the schedule and removes records immediately.
+5. The frontend polls `GET` every 5 seconds and maintains a local countdown synchronized between polls.
 
-Remove imediatamente apenas os 3 registros específicos da tabela
-`tegercontrpedperm` e cancela o agendamento no backend.
-
-**Resposta 200:**
-
-```json
-{ "mensagem": "Triangulação desativada com sucesso." }
-```
-
----
-
-## Funcionamento do Temporizador (10 minutos)
-
-1. Ao chamar `POST /triangulacao`, o backend agenda uma tarefa única no
-   **APScheduler** (`DateTrigger`) para executar após 600 segundos.
-2. O horário de ativação é armazenado em memória para calcular o
-   `tempo_restante_segundos` retornado pelo `GET`.
-3. Quando o tempo expira, o backend **remove os 3 registros automaticamente** —
-   mesmo que o frontend esteja fechado.
-4. O `DELETE /triangulacao` cancela o agendamento e remove os registros imediatamente.
-5. O frontend faz polling a cada 5 segundos no `GET` e mantém um contador regressivo
-   local sincronizado entre os polls.
-
----
-
-## Estrutura do Projeto
+## Project Structure
 
 ```
 .
 ├── backend/
-│   ├── requirements.txt      # dependências Python
-│   ├── .env.example          # template de variáveis de ambiente
-│   ├── config.py             # leitura de configurações / connection string
-│   ├── database.py           # acesso ao SQL Server (pyodbc)
-│   ├── scheduler.py          # APScheduler (temporizador de 10 min)
-│   └── main.py               # FastAPI app com os 3 endpoints
+│   ├── requirements.txt      # Python dependencies
+│   ├── .env.example          # Environment variable template
+│   ├── config.py             # Configuration / connection string
+│   ├── database.py           # SQL Server access (pyodbc)
+│   ├── scheduler.py          # APScheduler (10-min timer)
+│   └── main.py               # FastAPI app with endpoints
 ├── src/
-│   ├── api.ts                # cliente HTTP para a API
-│   ├── types.ts              # tipos compartilhados
-│   ├── App.tsx               # tela principal
+│   ├── api.ts                # HTTP client for the API
+│   ├── types.ts              # Shared TypeScript types
+│   ├── App.tsx               # Main management screen
+│   ├── main.tsx              # React entry point
+│   ├── context/
+│   │   └── AuthContext.tsx   # Authentication state management
+│   ├── services/
+│   │   └── login.ts          # External login API service
 │   └── components/
-│       ├── Countdown.tsx          # contador regressivo visual (anel SVG)
-│       ├── StatusBadge.tsx        # indicador Ativo / Inativo
-│       └── TriangulacaoTable.tsx  # tabela tegercontrpedperm
+│       ├── Countdown.tsx          # SVG ring countdown timer
+│       ├── StatusBadge.tsx        # Active/Inactive indicator
+│       ├── TriangulacaoTable.tsx  # tegercontrpedperm table
+│       └── LoginScreen.tsx        # Login form
+├── start.py                  # Unified server entry point
+├── .env                      # Environment variables (git-ignored)
 └── README.md
 ```
+
+## Important Commands
+
+| Command              | Description                              |
+| -------------------- | ---------------------------------------- |
+| `npm start`          | Build frontend + start unified server    |
+| `npm run dev`        | Start Vite dev server with hot reload    |
+| `npm run build`      | Build frontend for production            |
+| `npm run typecheck`  | Run TypeScript type checking             |
+| `npm run lint`       | Run ESLint                               |
