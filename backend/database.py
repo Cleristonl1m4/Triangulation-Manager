@@ -101,3 +101,39 @@ def clear_activation_time() -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def get_reptec_connection() -> pyodbc.Connection:
+    return pyodbc.connect(settings.reptec_connection_string)
+
+
+def insert_log(nome_usuario: str, codigo_usuario: str, login_usuario: str, acao: str) -> None:
+    conn = get_reptec_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DB_NAME()")
+        db_name = cursor.fetchone()[0]
+        print(f"[database] insert_log conectado ao banco: {db_name}")
+        cursor.execute(
+            "IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'triangulacao_log') AND type in (N'U'))"
+            " BEGIN CREATE TABLE triangulacao_log ("
+            "   id INT IDENTITY PRIMARY KEY,"
+            "   nome_usuario NVARCHAR(200),"
+            "   codigo_usuario NVARCHAR(50),"
+            "   login_usuario NVARCHAR(100),"
+            "   acao NVARCHAR(50),"
+            "   data_hora DATETIME2"
+            ") END"
+        )
+        cursor.execute(
+            "INSERT INTO triangulacao_log (nome_usuario, codigo_usuario, login_usuario, acao, data_hora) "
+            "VALUES (?, ?, ?, ?, GETUTCDATE())",
+            nome_usuario,
+            codigo_usuario,
+            login_usuario,
+            acao,
+        )
+        conn.commit()
+        print(f"[database] insert_log OK: {acao} por {nome_usuario}")
+    finally:
+        conn.close()
